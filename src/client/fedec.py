@@ -3,6 +3,7 @@ import random
 from typing import Any
 
 import torch
+import torchprofile
 from torch.utils.data import DataLoader, Subset
 from torch.nn.functional import cosine_similarity, relu
 
@@ -16,6 +17,7 @@ class ElasticMoonClient(FedAvgClient):
 
         self.prev_model = deepcopy(self.model)
         self.global_model = deepcopy(self.model)
+        self.total_flops = 0
 
         self.training_steps = 0
 
@@ -50,7 +52,10 @@ class ElasticMoonClient(FedAvgClient):
         self.model.eval()
         for x, y in self.sampled_trainloader:
             x, y = x.to(self.device), y.to(self.device)
-            logits = self.model(x)
+            with torchprofile.Profile(self.model,x) as prof:
+                logits = self.model(x)
+            # logits = self.model(x)
+            self.total_flops += prof.self.total_flops
             loss = self.criterion(logits, y)
             grads_norm = [
                 # 1/2*(torch.norm(layer_grad[0]) ** 2 + torch.norm(layer_grad[0],p=1) ** 2)
@@ -78,6 +83,7 @@ class ElasticMoonClient(FedAvgClient):
     def package(self):
         client_package = super().package()
         client_package["sensitivity"] = self.sensitivity.cpu().clone()
+        client_package["total_flops"] = self.total_flops
         return client_package
 
     def fit(self):

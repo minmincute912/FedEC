@@ -37,7 +37,7 @@ class ElasticMoonServer(FedAvgServer):
         self.clients_prev_model_params = {i: {} for i in self.train_clients}
         self.boosted_parameters = []
         self.image_counter = 0
-
+        self.total_flops = 0
 
     def package(self, client_id: int):
         server_package = super().package(client_id)
@@ -122,6 +122,7 @@ class ElasticMoonServer(FedAvgServer):
 
         self.aggregate(clients_weight, clients_params_diff, clients_sensitivity)
         
+        print(f'Total FLOPs: {self.total_flops}')
 
     def aggregate(
         self,
@@ -167,7 +168,12 @@ class ElasticMoonServer(FedAvgServer):
         for param, coef, diff in zip(
             self.global_model_params.values(), zeta, aggregated_diff
         ):
-            param.data -= coef * diff
+            with torchprofile.Profile(param, diff) as prof:
+                param.data -= coef * diff
+            self.total_flops += prof.self.total_flops
+        
+        
+
 
 
     def boosted_param(self, zeta):
